@@ -1869,7 +1869,7 @@ int subgroup_announce_check(struct bgp_node *rn, struct bgp_path_info *pi,
 
 void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 			struct bgp_maxpaths_cfg *mpath_cfg,
-			struct bgp_path_info_pair *result, afi_t afi,
+			struct bgp_path_info_pair *result, struct bgp_path_info_pair *alternative, afi_t afi,
 			safi_t safi)
 {
 	struct bgp_path_info *new_select;
@@ -1878,6 +1878,8 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 	struct bgp_path_info *pi1;
 	struct bgp_path_info *pi2;
 	struct bgp_path_info *nextpi = NULL;
+	struct bgp_path_info *second = NULL;
+	struct bgp_path_info *third = NULL;
 	int paths_eq, do_mpath, debug;
 	struct list mp_list;
 	char pfx_buf[PREFIX2STR_BUFFER];
@@ -2011,9 +2013,22 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 
 		bgp_path_info_unset_flag(rn, pi, BGP_PATH_DMED_CHECK);
 
-		if (bgp_path_info_cmp(bgp, pi, new_select, &paths_eq, mpath_cfg,
+		if (bgp_path_info_cmp(bgp, pi, third, &paths_eq, mpath_cfg,
 				      debug, pfx_buf, afi, safi)) {
-			new_select = pi;
+			if (bgp_path_info_cmp(bgp, pi, second, &paths_eq, mpath_cfg,
+				      debug, pfx_buf, afi, safi)) {
+				if (bgp_path_info_cmp(bgp, pi, new_select, &paths_eq, mpath_cfg,
+				      debug, pfx_buf, afi, safi)) {
+					third = second;
+					second = new_select;
+					new_select = pi;
+				} else {
+					third = second;
+					second = pi;
+				}
+			} else {
+				 third = pi;
+			}
 		}
 	}
 
@@ -2089,6 +2104,8 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 
 	result->old = old_select;
 	result->new = new_select;
+	alternative->old = third;
+	alternative->new = second;
 
 	return;
 }
@@ -2229,8 +2246,14 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 {
 	struct bgp_path_info *new_select;
 	struct bgp_path_info *old_select;
+	struct bgp_path_info *second = NULL;
+	struct bgp_path_info *third = NULL;
 	struct bgp_path_info_pair old_and_new;
+	struct bgp_path_info_pair alternative;
 	char pfx_buf[PREFIX2STR_BUFFER];
+	char new_buf[PATH_ADDPATH_STR_BUFFER];
+	char second_buf[PATH_ADDPATH_STR_BUFFER];
+	char third_buf[PATH_ADDPATH_STR_BUFFER];
 	int debug = 0;
 
 	/* Is it end of initial update? (after startup) */
@@ -2259,10 +2282,12 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 	}
 
 	/* Best path selection. */
-	bgp_best_selection(bgp, rn, &bgp->maxpaths[afi][safi], &old_and_new,
+	bgp_best_selection(bgp, rn, &bgp->maxpaths[afi][safi], &old_and_new, &alternative,
 			   afi, safi);
 	old_select = old_and_new.old;
 	new_select = old_and_new.new;
+	second = alternative.new;
+	third = alternative.old;
 
 	/* Do we need to allocate or free labels?
 	 * Right now, since we only deal with per-prefix labels, it is not
@@ -2477,6 +2502,27 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 		bgp_path_info_reap(rn, old_select);
 
 	UNSET_FLAG(rn->flags, BGP_NODE_PROCESS_SCHEDULED);
+
+	if (debug)
+	{	
+		bgp_path_info_path_with_addpath_rx_str(new_select, new_buf);
+		bgp_path_info_path_with_addpath_rx_str(second, second_buf);
+		bgp_path_info_path_with_addpath_rx_str(third, third_buf);
+		struct bgp_path_info *pi;
+		zlog_debug("Blink: After best_selection");
+		for (pi = bgp_node_get_bgp_path_info(rn); pi; pi = pi->next)
+		{
+			zlog_debug(
+				"%s: Blink: After path selection, %p",
+				pfx_buf, pi);
+		}
+		zlog_debug(
+				"%s: Blink: Best: %s, second: %s, third: %s",
+				pfx_buf, new_buf, second_buf, third_buf);
+		zlog_debug(
+				"%s: Blink: Best: %p, second: %p, third: %p",
+				pfx_buf, new_select, second, third);
+	}
 	return;
 }
 
