@@ -2455,6 +2455,8 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 				bgp_zebra_withdraw(p, old_select, bgp, safi);
 
 			bgp_zebra_announce(rn, p, new_select, bgp, afi, safi);
+			bgp_zebra_announce(rn, p, second, bgp, afi, safi);
+			bgp_zebra_announce(rn, p, third, bgp, afi, safi);
 		} else {
 			/* Withdraw the route from the kernel. */
 			if (old_select && old_select->type == ZEBRA_ROUTE_BGP
@@ -2508,14 +2510,6 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 		bgp_path_info_path_with_addpath_rx_str(new_select, new_buf);
 		bgp_path_info_path_with_addpath_rx_str(second, second_buf);
 		bgp_path_info_path_with_addpath_rx_str(third, third_buf);
-		struct bgp_path_info *pi;
-		zlog_debug("Blink: After best_selection");
-		for (pi = bgp_node_get_bgp_path_info(rn); pi; pi = pi->next)
-		{
-			zlog_debug(
-				"%s: Blink: After path selection, %p",
-				pfx_buf, pi);
-		}
 		zlog_debug(
 				"%s: Blink: Best: %s, second: %s, third: %s",
 				pfx_buf, new_buf, second_buf, third_buf);
