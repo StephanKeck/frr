@@ -1253,6 +1253,18 @@ void bgp_zebra_announce(struct bgp_node *rn, struct prefix *p,
 
 	tag = info->attr->tag;
 
+	/*Log: Both get executed*/
+	if (CHECK_FLAG(info->flags, BGP_PATH_PRIMARY))
+	{
+		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_PRIMARY);
+		zlog_debug("Blink: Best route");
+	}
+	else
+	{
+		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_BACKUP);
+		zlog_debug("Blink: Backup route");
+	}
+
 	/* If the route's source is EVPN, flag as such. */
 	is_evpn = is_route_parent_evpn(info);
 	if (is_evpn)

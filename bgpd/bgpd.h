@@ -225,6 +225,9 @@ enum bgp_instance_type {
 
 /* BGP instance structure.  */
 struct bgp {
+
+	int best_paths;
+
 	/* AS number of this BGP instance.  */
 	as_t as;
 
@@ -1588,6 +1591,8 @@ extern int bgp_default_subgroup_pkt_queue_max_unset(struct bgp *bgp);
 
 extern int bgp_listen_limit_set(struct bgp *, int);
 extern int bgp_listen_limit_unset(struct bgp *);
+
+extern int bgp_set_best_paths(struct bgp *, int);
 
 extern int bgp_update_delay_active(struct bgp *);
 extern int bgp_update_delay_configured(struct bgp *);

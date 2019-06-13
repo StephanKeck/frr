@@ -451,6 +451,10 @@ extern const char *zserv_command_string(unsigned int command);
  * kernel install flag for it should be turned on
  */
 #define ZEBRA_FLAG_ONLINK             0x80
+ /*BGP defines the order of the routes that it announces to zebra */
+//TODO: If learnt from BGP just keep the 3 best routes (?)
+#define ZEBRA_FLAG_BGP_PRIMARY 		  0x100
+#define ZEBRA_FLAG_BGP_BACKUP		  0x200
 
 #ifndef INADDR_LOOPBACK
 #define	INADDR_LOOPBACK	0x7f000001	/* Internet address 127.0.0.1.  */

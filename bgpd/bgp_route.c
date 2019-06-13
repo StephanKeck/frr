@@ -322,6 +322,26 @@ void bgp_path_info_reap(struct bgp_node *rn, struct bgp_path_info *pi)
 	bgp_unlock_node(rn);
 }
 
+void bgp_path_info_to_top(struct bgp_node *rn, struct bgp_path_info *pi)
+{
+	if (pi->next)
+		pi->next->prev = pi->prev;
+	if (pi->prev)
+		pi->prev->next = pi->next;
+	else
+		return;
+
+	struct bgp_path_info *top;
+
+	top = bgp_node_get_bgp_path_info(rn);
+
+	pi->next = top;
+	pi->prev = NULL;
+	if (top)
+		top->prev = pi;
+	bgp_node_set_bgp_path_info(rn, pi);
+}
+
 void bgp_path_info_delete(struct bgp_node *rn, struct bgp_path_info *pi)
 {
 	bgp_path_info_set_flag(rn, pi, BGP_PATH_REMOVED);
@@ -1869,17 +1889,16 @@ int subgroup_announce_check(struct bgp_node *rn, struct bgp_path_info *pi,
 
 void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 			struct bgp_maxpaths_cfg *mpath_cfg,
-			struct bgp_path_info_pair *result, struct bgp_path_info_pair *alternative, afi_t afi,
+			struct bgp_path_info_pair *result, afi_t afi,
 			safi_t safi)
 {
 	struct bgp_path_info *new_select;
 	struct bgp_path_info *old_select;
+	struct bgp_path_info *best = NULL;
 	struct bgp_path_info *pi;
 	struct bgp_path_info *pi1;
 	struct bgp_path_info *pi2;
 	struct bgp_path_info *nextpi = NULL;
-	struct bgp_path_info *second = NULL;
-	struct bgp_path_info *third = NULL;
 	int paths_eq, do_mpath, debug;
 	struct list mp_list;
 	char pfx_buf[PREFIX2STR_BUFFER];
@@ -1969,68 +1988,71 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 	}
 
 	/* Check old selected route and new selected route. */
-	old_select = NULL;
+	old_select = NULL;	
 	new_select = NULL;
-	for (pi = bgp_node_get_bgp_path_info(rn);
-	     (pi != NULL) && (nextpi = pi->next, 1); pi = nextpi) {
-		if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
-			old_select = pi;
-
-		if (BGP_PATH_HOLDDOWN(pi)) {
-			/* reap REMOVED routes, if needs be
-			 * selected route must stay for a while longer though
-			 */
-			if (CHECK_FLAG(pi->flags, BGP_PATH_REMOVED)
-			    && (pi != old_select))
-				bgp_path_info_reap(rn, pi);
-
-			if (debug)
-				zlog_debug("%s: pi %p in holddown", __func__,
-					   pi);
-
-			continue;
-		}
-
-		if (pi->peer && pi->peer != bgp->peer_self
-		    && !CHECK_FLAG(pi->peer->sflags, PEER_STATUS_NSF_WAIT))
-			if (pi->peer->status != Established) {
+	for (int i = 0; i < bgp->best_paths; i++){
+		zlog_debug("Blink, i= %d node->info: %p", i, rn->info);
+		int j = 0;
+		for (pi = bgp_node_get_bgp_path_info(rn);
+		     (pi != NULL) && (nextpi = pi->next, 1); pi = nextpi) {
+			zlog_debug("pi: %p", pi);
+			for (; j < i && (nextpi != NULL); j++) {
+				zlog_debug("j: %d, pi: %p, nextpi: %p", j, pi, nextpi);
+				pi = nextpi;
+				nextpi = pi->next;
+			}
+			if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
+				old_select = pi;
+			/* Here come some reasons to ignore the route from best path selection*/
+			if (BGP_PATH_HOLDDOWN(pi)) {
+				/* reap REMOVED routes, if needs be
+				 * selected route must stay for a while longer though
+				 */
+				if (CHECK_FLAG(pi->flags, BGP_PATH_REMOVED)
+				    && (pi != old_select))
+					bgp_path_info_reap(rn, pi);
 
 				if (debug)
-					zlog_debug(
-						"%s: pi %p non self peer %s not estab state",
-						__func__, pi, pi->peer->host);
+					zlog_debug("%s: pi %p in holddown", __func__,
+						   pi);
 
 				continue;
 			}
 
-		if (bgp_flag_check(bgp, BGP_FLAG_DETERMINISTIC_MED)
-		    && (!CHECK_FLAG(pi->flags, BGP_PATH_DMED_SELECTED))) {
-			bgp_path_info_unset_flag(rn, pi, BGP_PATH_DMED_CHECK);
-			if (debug)
-				zlog_debug("%s: pi %p dmed", __func__, pi);
-			continue;
-		}
+			if (pi->peer && pi->peer != bgp->peer_self
+			    && !CHECK_FLAG(pi->peer->sflags, PEER_STATUS_NSF_WAIT))
+				if (pi->peer->status != Established) {
 
-		bgp_path_info_unset_flag(rn, pi, BGP_PATH_DMED_CHECK);
+					if (debug)
+						zlog_debug(
+							"%s: pi %p non self peer %s not estab state",
+							__func__, pi, pi->peer->host);
 
-		if (bgp_path_info_cmp(bgp, pi, third, &paths_eq, mpath_cfg,
-				      debug, pfx_buf, afi, safi)) {
-			if (bgp_path_info_cmp(bgp, pi, second, &paths_eq, mpath_cfg,
-				      debug, pfx_buf, afi, safi)) {
-				if (bgp_path_info_cmp(bgp, pi, new_select, &paths_eq, mpath_cfg,
-				      debug, pfx_buf, afi, safi)) {
-					third = second;
-					second = new_select;
-					new_select = pi;
-				} else {
-					third = second;
-					second = pi;
+					continue;
 				}
-			} else {
-				 third = pi;
+
+			if (bgp_flag_check(bgp, BGP_FLAG_DETERMINISTIC_MED)
+			    && (!CHECK_FLAG(pi->flags, BGP_PATH_DMED_SELECTED))) {
+				bgp_path_info_unset_flag(rn, pi, BGP_PATH_DMED_CHECK);
+				if (debug)
+					zlog_debug("%s: pi %p dmed", __func__, pi);
+				continue;
+			}
+
+			bgp_path_info_unset_flag(rn, pi, BGP_PATH_DMED_CHECK);
+
+			if (bgp_path_info_cmp(bgp, pi, best, &paths_eq, mpath_cfg,
+					      debug, pfx_buf, afi, safi)) {
+				best = pi;
+				zlog_debug("Blink, best %p", best);
+				if (j == 0)
+					new_select = best;
 			}
 		}
+		bgp_path_info_to_top(rn, best);
+		best = NULL;
 	}
+	//list_sort(rn->info, int (*bgp_path_info_cmp_compatible));
 
 	/* Now that we know which path is the bestpath see if any of the other
 	 * paths
@@ -2104,8 +2126,11 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 
 	result->old = old_select;
 	result->new = new_select;
-	alternative->old = third;
-	alternative->new = second;
+
+	zlog_debug("Blinklist");
+	for (pi = bgp_node_get_bgp_path_info(rn);
+		     (pi != NULL) && (nextpi = pi->next, 1); pi = nextpi) 
+			zlog_debug("Blinklist: pi: %p, flags: %x", pi, pi->flags);
 
 	return;
 }
@@ -2246,14 +2271,15 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 {
 	struct bgp_path_info *new_select;
 	struct bgp_path_info *old_select;
-	struct bgp_path_info *second = NULL;
-	struct bgp_path_info *third = NULL;
+	struct bgp_path_info *pi;
+	//struct bgp_path_info *second = NULL;
+	//struct bgp_path_info *third = NULL;
 	struct bgp_path_info_pair old_and_new;
-	struct bgp_path_info_pair alternative;
+	//struct bgp_path_info_pair alternative;
 	char pfx_buf[PREFIX2STR_BUFFER];
 	char new_buf[PATH_ADDPATH_STR_BUFFER];
-	char second_buf[PATH_ADDPATH_STR_BUFFER];
-	char third_buf[PATH_ADDPATH_STR_BUFFER];
+	//char second_buf[PATH_ADDPATH_STR_BUFFER];
+	//char third_buf[PATH_ADDPATH_STR_BUFFER];
 	int debug = 0;
 
 	/* Is it end of initial update? (after startup) */
@@ -2282,13 +2308,19 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 	}
 
 	/* Best path selection. */
-	bgp_best_selection(bgp, rn, &bgp->maxpaths[afi][safi], &old_and_new, &alternative,
-			   afi, safi);
+	bgp_best_selection(bgp, rn, &bgp->maxpaths[afi][safi], &old_and_new, afi, safi);
 	old_select = old_and_new.old;
 	new_select = old_and_new.new;
-	second = alternative.new;
-	third = alternative.old;
-
+	//second = alternative.new;
+	//third = alternative.old;
+	pi = new_select;
+	for (int i = 0; i < bgp->best_paths; i++) {
+		zlog_debug("Blink: Pref: %d, %p", i, pi);
+		if (pi->prev)
+			pi = pi->prev;
+		else 
+			break;
+	}
 	/* Do we need to allocate or free labels?
 	 * Right now, since we only deal with per-prefix labels, it is not
 	 * necessary to do this upon changes to best path. Exceptions:
@@ -2453,8 +2485,16 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 			if (old_select &&
 			    is_route_parent_evpn(old_select))
 				bgp_zebra_withdraw(p, old_select, bgp, safi);
-
-			bgp_zebra_announce(rn, p, new_select, bgp, afi, safi);
+			//TODO: Dest or nh? 192 vs 128
+			SET_FLAG(new_select->flags, BGP_PATH_PRIMARY);
+			pi = new_select;
+			for (int i = 0; i < bgp->best_paths; i++) {
+				bgp_zebra_announce(rn, p, pi, bgp, afi, safi);
+				if (pi->prev)
+					pi = pi->prev;
+				else
+					break;
+			}
 		} else {
 			/* Withdraw the route from the kernel. */
 			if (old_select && old_select->type == ZEBRA_ROUTE_BGP
@@ -2506,8 +2546,7 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 	if (debug)
 	{	
 		bgp_path_info_path_with_addpath_rx_str(new_select, new_buf);
-		bgp_path_info_path_with_addpath_rx_str(second, second_buf);
-		bgp_path_info_path_with_addpath_rx_str(third, third_buf);
+
 		struct bgp_path_info *pi;
 		zlog_debug("Blink: After best_selection");
 		for (pi = bgp_node_get_bgp_path_info(rn); pi; pi = pi->next)
@@ -2516,12 +2555,6 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 				"%s: Blink: After path selection, %p",
 				pfx_buf, pi);
 		}
-		zlog_debug(
-				"%s: Blink: Best: %s, second: %s, third: %s",
-				pfx_buf, new_buf, second_buf, third_buf);
-		zlog_debug(
-				"%s: Blink: Best: %p, second: %p, third: %p",
-				pfx_buf, new_select, second, third);
 	}
 	return;
 }

@@ -1275,6 +1275,10 @@ static void rib_process_add_fib(struct zebra_vrf *zvrf, struct route_node *rn,
 		rib_install_kernel(rn, new, NULL);
 	else
 		dest->selected_fib = new;
+	
+	//for (struct route_entry *pi = dest->selected_fib;
+	//		pi != NULL; pi = pi->next)
+	//	zlog_debug("Blink: selected_fib: %p", pi);
 
 	UNSET_FLAG(new->status, ROUTE_ENTRY_CHANGED);
 }
@@ -1377,7 +1381,7 @@ static void rib_process_update_fib(struct zebra_vrf *zvrf,
 				 * LSP. */
 				if (zebra_rib_labeled_unicast(new))
 					zebra_mpls_lsp_install(zvrf, rn, new);
-
+				//Here -> FPM
 				rib_install_kernel(rn, new, old);
 			} else {
 				/*
@@ -1538,6 +1542,7 @@ static struct route_entry *rib_choose_best(struct route_entry *current,
 /* Core function for processing routing information base. */
 static void rib_process(struct route_node *rn)
 {
+	/*Goal is to send second/third(/n-th) best route to FPM */ 
 	struct route_entry *re;
 	struct route_entry *next;
 	struct route_entry *old_selected = NULL;
@@ -1545,6 +1550,7 @@ static void rib_process(struct route_node *rn)
 	struct route_entry *old_fib = NULL;
 	struct route_entry *new_fib = NULL;
 	struct route_entry *best = NULL;
+	struct route_entry *backup = NULL;
 	char buf[SRCDEST2STR_BUFFER];
 	rib_dest_t *dest;
 	struct zebra_vrf *zvrf = NULL;
@@ -1585,16 +1591,36 @@ static void rib_process(struct route_node *rn)
 				re->flags, re->distance, re->metric);
 
 		UNSET_FLAG(re->status, ROUTE_ENTRY_NEXTHOPS_CHANGED);
-
+		if(CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_PRIMARY))
+			zlog_debug("Blink %u:%s: Primary route %p (type %d) status %x flags %x "
+				"dist %d metric %d",
+				vrf_id, buf, re, re->type, re->status,
+				re->flags, re->distance, re->metric);
+		else if(CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_BACKUP))
+			zlog_debug("Blink %u:%s: Backup route %p (type %d) status %x flags %x "
+				"dist %d metric %d",
+				vrf_id, buf, re, re->type, re->status,
+				re->flags, re->distance, re->metric);
+		//Log: Only for non-BGP routes
+		else 
+			zlog_debug("Blink %s no flag matches", buf);
 		/* Currently selected re. */
 		if (CHECK_FLAG(re->flags, ZEBRA_FLAG_SELECTED)) {
 			assert(old_selected == NULL);
 			old_selected = re;
 		}
-
+		//TODO!!!
 		/* Skip deleted entries from selection */
 		if (CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED))
+		{
+			if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_BACKUP))
+			{
+				UNSET_FLAG(re->status, ROUTE_ENTRY_REMOVED);
+				SET_FLAG(re->status, ROUTE_ENTRY_CHANGED);
+				backup = re;
+			}
 			continue;
+		}
 
 		/* Skip unreachable nexthop. */
 		/* This first call to nexthop_active_update is merely to
@@ -1641,7 +1667,6 @@ static void rib_process(struct route_node *rn)
 					SET_FLAG(re->status,
 						 ROUTE_ENTRY_REMOVED);
 			}
-
 			continue;
 		}
 
@@ -1656,17 +1681,44 @@ static void rib_process(struct route_node *rn)
 			if (new_fib && best != new_fib)
 				UNSET_FLAG(new_fib->status,
 					   ROUTE_ENTRY_CHANGED);
+			zlog_debug("Blink %s new_fib: %p, re: %p, best: %p", buf, new_selected, re, best);
 			new_fib = best;
 		} else {
 			best = rib_choose_best(new_selected, re);
+			zlog_debug("Blink %s new_selected: %p, re: %p, best: %p", buf, new_selected, re, best);
 			if (new_selected && best != new_selected)
+			{
 				UNSET_FLAG(new_selected->status,
 					   ROUTE_ENTRY_CHANGED);
+				backup = rib_choose_best(new_selected, backup);
+				zlog_debug("Blink %s new backup new_selected", buf);
+			}
+
+			if (re != best) //&& CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_BACKUP))
+			{
+				//Not executed: problem with backup and primary
+				//-> Skipped bc of RE_Removed, re != best kommen nie soweit
+				zlog_debug("Blink %s new backup re", buf);
+				backup = re;
+			}
 			new_selected = best;
 		}
+
 		if (best != re)
 			UNSET_FLAG(re->status, ROUTE_ENTRY_CHANGED);
+		zlog_debug("Blink End loop %u:%s: Best route %p (type %d) status %x flags %x "
+			"dist %d metric %d",
+			vrf_id, buf, best, best->type, best->status,
+			best->flags, best->distance, best->metric);
 	} /* RNODE_FOREACH_RE */
+
+	RNODE_FOREACH_RE_SAFE (rn, re, next)
+		if (IS_ZEBRA_DEBUG_RIB_DETAILED)
+			zlog_debug(
+				"%u:%s: After selection: re %p (type %d) status %x flags %x "
+				"dist %d metric %d",
+				vrf_id, buf, re, re->type, re->status,
+				re->flags, re->distance, re->metric);
 
 	/* If no FIB override route, use the selected route also for FIB */
 	if (new_fib == NULL)
@@ -1696,14 +1748,23 @@ static void rib_process(struct route_node *rn)
 							   ROUTE_ENTRY_CHANGED);
 
 	/* Update fib according to selection results */
+	//if (backup && old_fib)
+	//{
+	//	zlog_debug("Blink: backup %p, old_fib %p", backup, old_fib);
+	//	rib_process_update_fib(zvrf, rn, old_fib, backup);
+	//}
 	if (new_fib && old_fib)
+	{
+		zlog_debug("Blink: new_fib %p, old_fib %p", new_fib, old_fib);
 		rib_process_update_fib(zvrf, rn, old_fib, new_fib);
+	}		
 	else if (new_fib)
 		rib_process_add_fib(zvrf, rn, new_fib);
 	else if (old_fib)
 		rib_process_del_fib(zvrf, rn, old_fib);
 
 	/* Update SELECTED entry */
+	//TODO
 	if (old_selected != new_selected || selected_changed) {
 
 		if (new_selected && new_selected != new_fib) {
@@ -2381,6 +2442,22 @@ static void rib_link(struct route_node *rn, struct route_entry *re, int process)
 		zebra_add_import_table_entry(rn, re, rmap_name);
 	} else if (process)
 		rib_queue_add(rn);
+	char buf[SRCDEST2STR_BUFFER];
+	struct route_entry *next;
+	struct zebra_vrf *zvrf = NULL;
+	dest = rib_dest_from_rnode(rn);
+	vrf_id_t vrf_id = VRF_UNKNOWN;
+
+	if (dest) {
+		zvrf = rib_dest_vrf(dest);
+		vrf_id = zvrf_id(zvrf);
+	}
+	if (IS_ZEBRA_DEBUG_RIB)
+		srcdest_rnode2str(rn, buf, sizeof(buf));
+	RNODE_FOREACH_RE_SAFE (rn, re, next)
+		zlog_debug("rib_link: %u:%s: re %p",
+				vrf_id, buf, re);
+
 }
 
 static void rib_addnode(struct route_node *rn,
@@ -2684,28 +2761,42 @@ int rib_add_multipath(afi_t afi, safi_t safi, struct prefix *p,
 	 * for the install don't do a route replace.
 	 */
 	RNODE_FOREACH_RE (rn, same) {
-		if (CHECK_FLAG(same->status, ROUTE_ENTRY_REMOVED))
+		//TODO: Don't get the code... -> check if same to re!!!{ }
+		//zlog_debug("Cont: rn: %p", same);
+		//TODO: All are shown wenn debugged -> last gets removed?!
+		//If all have continue we should have same == NULL at the end of the list
+		if (CHECK_FLAG(same->status, ROUTE_ENTRY_REMOVED)){ 
+			//zlog_debug("Cont: status rn: %p", same);
 			continue;
-
-		if (same->type != re->type)
+		}
+		if (same->type != re->type){ 
+			//zlog_debug("Cont: type rn: %p", same);
 			continue;
-		if (same->instance != re->instance)
+		}
+		if (same->instance != re->instance){ 
+			//zlog_debug("Cont: instance rn: %p", same);
 			continue;
+		}
 		if (same->type == ZEBRA_ROUTE_KERNEL
-		    && same->metric != re->metric)
+		    && same->metric != re->metric){ 
+			//zlog_debug("Cont: metric rn: %p", same);
 			continue;
-
+		}
 		if (CHECK_FLAG(re->flags, ZEBRA_FLAG_RR_USE_DISTANCE) &&
-		    same->distance != re->distance)
+		    same->distance != re->distance){ 
+			//zlog_debug("Cont: distance rn: %p", same);
 			continue;
-
+		}
 		/*
 		 * We should allow duplicate connected routes
 		 * because of IPv6 link-local routes and unnumbered
 		 * interfaces on Linux.
 		 */
-		if (same->type != ZEBRA_ROUTE_CONNECT)
+		if (same->type != ZEBRA_ROUTE_CONNECT) {
+			//zlog_debug("Cont: type not %x rn: %p", ZEBRA_ROUTE_CONNECT, same);
 			break;
+		}
+
 	}
 
 	/* If this route is kernel route, set FIB flag to the route. */
@@ -2727,7 +2818,12 @@ int rib_add_multipath(afi_t afi, safi_t safi, struct prefix *p,
 	ret = 1;
 
 	/* Free implicit route.*/
-	if (same) {
+	if (same)// && !CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_PRIMARY) && !CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_BACKUP)) 
+	{
+		rnode_debug(
+			rn, re->vrf_id,
+			"Removing: route rn %p, re %p (flags %x) existing %p",
+			(void *)rn, (void *)same, same->flags, (void *)same);		//TODO: "deletes" routes (sets ROUTE_ENTRY_REMOVED)
 		rib_delnode(rn, same);
 		ret = -1;
 	}

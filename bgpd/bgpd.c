@@ -109,7 +109,6 @@ static void bgp_if_finish(struct bgp *bgp);
 static void peer_drop_dynamic_neighbor(struct peer *peer);
 
 extern struct zclient *zclient;
-
 /* handle main socket creation or deletion */
 static int bgp_check_main_socket(bool create, struct bgp *bgp)
 {
@@ -671,6 +670,16 @@ int bgp_listen_limit_unset(struct bgp *bgp)
 		return -1;
 
 	bgp->dynamic_neighbors_limit = BGP_DYNAMIC_NEIGHBORS_LIMIT_DEFAULT;
+
+	return 0;
+}
+
+int bgp_set_best_paths(struct bgp *bgp, int best_paths)
+{
+	if (!bgp)
+		return -1;
+
+	bgp->best_paths = best_paths;
 
 	return 0;
 }

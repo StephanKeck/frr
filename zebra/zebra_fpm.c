@@ -478,6 +478,7 @@ static inline void zfpm_write_off(void)
 static int zfpm_conn_up_thread_cb(struct thread *thread)
 {
 	struct route_node *rnode;
+	struct route_entry *pi;
 	zfpm_rnodes_iter_t *iter;
 	rib_dest_t *dest;
 
@@ -497,7 +498,14 @@ static int zfpm_conn_up_thread_cb(struct thread *thread)
 
 		if (dest) {
 			zfpm_g->stats.t_conn_up_dests_processed++;
-			zfpm_trigger_update(rnode, NULL);
+			zlog_debug("Blinklist: rn");
+			for (pi = dest->selected_fib; dest->selected_fib != NULL; 
+					dest->selected_fib = dest->selected_fib->next)
+			{
+				zlog_debug("Blinklist: selected_fib: %p", pi);	
+				zfpm_trigger_update(rnode, NULL);
+			}
+			dest->selected_fib = pi;
 		}
 
 		/*
@@ -1257,10 +1265,12 @@ static int zfpm_trigger_update(struct route_node *rn, const char *reason)
 		return 0;
 	}
 
-	if (reason) {
+	if (reason)
 		zfpm_debug("%s triggering update to FPM - Reason: %s",
 			   prefix2str(&rn->p, buf, sizeof(buf)), reason);
-	}
+	else
+		zfpm_debug("%s triggering update to FPM - No Reason",
+			   prefix2str(&rn->p, buf, sizeof(buf)));
 
 	SET_FLAG(dest->flags, RIB_DEST_UPDATE_FPM);
 	TAILQ_INSERT_TAIL(&zfpm_g->dest_q, dest, fpm_q_entries);

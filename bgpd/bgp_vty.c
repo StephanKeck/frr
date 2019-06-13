@@ -2588,6 +2588,22 @@ DEFUN (no_bgp_listen_limit,
 	return CMD_SUCCESS;
 }
 
+DEFUN (bgp_n_best_paths, 
+		bgp_n_best_paths_cmd,
+		"bgp best paths (1-5000)",
+		"BGP specific commands\n"
+		"Number of paths that get announced to zebra\n")
+{
+	VTY_DECLVAR_CONTEXT(bgp, bgp);
+	int idx_number = 3;
+	int best_paths;
+
+	best_paths = strtoul(argv[idx_number]->arg, NULL, 10);
+
+	bgp_set_best_paths(bgp, best_paths);
+	
+	return CMD_SUCCESS;
+}
 
 /*
  * Check if this listen range is already configured. Check for exact
@@ -12956,6 +12972,8 @@ void bgp_vty_init(void)
 	/* "bgp listen limit" commands. */
 	install_element(BGP_NODE, &bgp_listen_limit_cmd);
 	install_element(BGP_NODE, &no_bgp_listen_limit_cmd);
+
+	install_element(BGP_NODE, &bgp_n_best_paths_cmd);
 
 	/* "bgp listen range" commands. */
 	install_element(BGP_NODE, &bgp_listen_range_cmd);

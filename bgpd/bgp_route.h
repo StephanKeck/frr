@@ -219,6 +219,9 @@ struct bgp_path_info {
 #define BGP_PATH_MULTIPATH_CHG (1 << 12)
 #define BGP_PATH_RIB_ATTR_CHG (1 << 13)
 #define BGP_PATH_ANNC_NH_SELF (1 << 14)
+/*if not set it is a backup path*/
+#define BGP_PATH_PRIMARY (1 << 15)
+
 
 	/* BGP route type.  This can be static, RIP, OSPF, BGP etc.  */
 	uint8_t type;
@@ -385,7 +388,7 @@ extern struct bgp_path_info *bgp_path_info_unlock(struct bgp_path_info *path);
 extern void bgp_path_info_add(struct bgp_node *rn, struct bgp_path_info *pi);
 extern void bgp_path_info_extra_free(struct bgp_path_info_extra **extra);
 extern void bgp_path_info_reap(struct bgp_node *rn, struct bgp_path_info *pi);
-extern void bgp_path_info_swap(struct bgp_node *rn, struct bgp_path_info *pi1, struct bgp_path_info *pi2);
+extern void bgp_path_info_to_top(struct bgp_node *rn, struct bgp_path_info *pi);
 extern void bgp_path_info_delete(struct bgp_node *rn, struct bgp_path_info *pi);
 extern struct bgp_path_info_extra *
 bgp_path_info_extra_get(struct bgp_path_info *path);
@@ -508,7 +511,7 @@ extern void bgp_attr_add_gshut_community(struct attr *attr);
 
 extern void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 			       struct bgp_maxpaths_cfg *mpath_cfg,
-			       struct bgp_path_info_pair *result, struct bgp_path_info_pair *alternative, afi_t afi,
+			       struct bgp_path_info_pair *result, afi_t afi,
 			       safi_t safi);
 extern void bgp_zebra_clear_route_change_flags(struct bgp_node *rn);
 extern int bgp_zebra_has_route_changed(struct bgp_node *rn,
