@@ -2505,18 +2505,18 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 
 	UNSET_FLAG(rn->flags, BGP_NODE_PROCESS_SCHEDULED);
 
-	if (debug)
-	{	
-		bgp_path_info_path_with_addpath_rx_str(new_select, new_buf);
-		bgp_path_info_path_with_addpath_rx_str(second, second_buf);
-		bgp_path_info_path_with_addpath_rx_str(third, third_buf);
-		zlog_debug(
-				"%s: Blink: Best: %s, second: %s, third: %s",
-				pfx_buf, new_buf, second_buf, third_buf);
-		zlog_debug(
-				"%s: Blink: Best: %p, second: %p, third: %p",
-				pfx_buf, new_select, second, third);
-	}
+	// if (debug)
+	// {	
+	// 	bgp_path_info_path_with_addpath_rx_str(new_select, new_buf);
+	// 	bgp_path_info_path_with_addpath_rx_str(second, second_buf);
+	// 	bgp_path_info_path_with_addpath_rx_str(third, third_buf);
+	// 	zlog_debug(
+	// 			"%s: Blink: Best: %s, second: %s, third: %s",
+	// 			pfx_buf, new_buf, second_buf, third_buf);
+	// 	zlog_debug(
+	// 			"%s: Blink: Best: %p, second: %p, third: %p",
+	// 			pfx_buf, new_select, second, third);
+	// }
 	return;
 }
 

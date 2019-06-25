@@ -385,7 +385,6 @@ extern struct bgp_path_info *bgp_path_info_unlock(struct bgp_path_info *path);
 extern void bgp_path_info_add(struct bgp_node *rn, struct bgp_path_info *pi);
 extern void bgp_path_info_extra_free(struct bgp_path_info_extra **extra);
 extern void bgp_path_info_reap(struct bgp_node *rn, struct bgp_path_info *pi);
-extern void bgp_path_info_swap(struct bgp_node *rn, struct bgp_path_info *pi1, struct bgp_path_info *pi2);
 extern void bgp_path_info_delete(struct bgp_node *rn, struct bgp_path_info *pi);
 extern struct bgp_path_info_extra *
 bgp_path_info_extra_get(struct bgp_path_info *path);
