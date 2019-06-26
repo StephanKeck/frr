@@ -223,7 +223,7 @@ struct bgp_path_info {
 #define BGP_PATH_RIB_ATTR_CHG (1 << 13)
 #define BGP_PATH_ANNC_NH_SELF (1 << 14)
 /*if not set it is a backup path*/
-#define BGP_PATH_PRIMARY (1 << 15) //x, 8000
+#define BGP_PATH_ANNOUNCED (1 << 15) //x, 8000
 
 
 	/* BGP route type.  This can be static, RIP, OSPF, BGP etc.  */

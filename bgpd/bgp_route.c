@@ -2066,8 +2066,7 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 					new_select = best;
 			}
 		}
-		if (new_select)
-			SET_FLAG(new_select->flags, BGP_PATH_PRIMARY);	
+
 		bgp_path_info_to_top(rn, best);
 	}
 	//list_sort(rn->info, int (*bgp_path_info_cmp_compatible));
@@ -2328,18 +2327,20 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 	bgp_best_selection(bgp, rn, &bgp->maxpaths[afi][safi], &old_and_new, afi, safi);
 	old_select = old_and_new.old;
 	new_select = old_and_new.new;
-	pi = new_select;
 	if (debug) {
-		//Can pi/new_select be zero?
-		for (int i = 0; i < bgp->best_paths; i++) {
-			zlog_debug("%s Blink: Pref: %d, %p", pfx_buf, i+1, pi);
-			if (!pi->prev)
-			{
-				zlog_debug("Blink, List consists of %d entries", i+1);
-				break;
+		//Can new_select be zero? Yes
+		pi = new_select;
+		if (pi){
+			for (int i = 0; i < bgp->best_paths; i++) {
+				zlog_debug("%s Blink: Pref: %d, %p", pfx_buf, i+1, pi);
+				if (!pi->prev)
+				{
+					zlog_debug("Blink, List consists of %d entries", i+1);
+					break;
+				}
+				else 
+					pi = pi->prev;	
 			}
-			else 
-				pi = pi->prev;	
 		}
 	}
 	/* Do we need to allocate or free labels?
@@ -2414,8 +2415,8 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 					for (int i = 0; i < bgp->best_paths; i++) {
 						prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
 						if(debug)
-							zlog_debug("p=%s, bgp_zebra_announce, route not changed: Flag Primary, %x", pfx_buf, 
-								CHECK_FLAG(pi->flags, BGP_PATH_PRIMARY));
+							zlog_debug("p=%s, bgp_zebra_announce, route not changed", pfx_buf); 
+						SET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
 						bgp_zebra_announce(rn, p, pi, bgp, afi, safi);
 						if (pi->prev)
 							pi = pi->prev;
@@ -2520,8 +2521,9 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 			pi = new_select;
 			for (int i = 0; i < bgp->best_paths; i++) {
 				prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
-				zlog_debug("p=%s, bgp_zebra_announce i = %d: Flag Primary, %x", pfx_buf,  i, 
-						CHECK_FLAG(pi->flags, BGP_PATH_PRIMARY));
+				if (debug)
+					zlog_debug("p=%s, bgp_zebra_announce i", pfx_buf); 
+				SET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
 				bgp_zebra_announce(rn, p, pi, bgp, afi, safi);
 				if (pi->prev)
 					pi = pi->prev;
@@ -2533,18 +2535,29 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 			if (old_select && old_select->type == ZEBRA_ROUTE_BGP
 			    && (old_select->sub_type == BGP_ROUTE_NORMAL
 				|| old_select->sub_type == BGP_ROUTE_AGGREGATE
-				|| old_select->sub_type == BGP_ROUTE_IMPORTED)){	
-				//TODO
-				pi = old_select;
-				for (int i = 0; i < bgp->best_paths; i++) {
-					bgp_zebra_withdraw(p, pi, bgp, safi);
-					if (pi->prev)
-						pi = pi->prev;
-					else
-						break;
-				}
-			}
+				|| old_select->sub_type == BGP_ROUTE_IMPORTED))
+			//{	
+			//	//TODO
+			//	pi = old_select;
+			//	for (int i = 0; i < bgp->best_paths; i++) {
+				bgp_zebra_withdraw(p, old_select, bgp, safi); //pi
+			//		if (pi->prev)
+			//			pi = pi->prev;
+			//		else
+			//			break;
+			//	}
+			//}
 		}
+		//Loop over all unchosen entries, withdraw if they have been announced before
+		for (pi = new_select->next; pi; pi = pi->next)
+			{
+			 	if (CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED)){
+			 		UNSET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
+			 		if (debug)
+						zlog_debug("p=%s, bgp_zebra_withdraw", pfx_buf); 
+					bgp_zebra_withdraw(p, pi, bgp, safi);
+			 	}
+			}
 	}
 
 	/* advertise/withdraw type-5 routes */

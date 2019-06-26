@@ -1253,10 +1253,8 @@ void bgp_zebra_announce(struct bgp_node *rn, struct prefix *p,
 
 	tag = info->attr->tag;
 
-	if (CHECK_FLAG(info->flags, BGP_PATH_PRIMARY))
-		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_PRIMARY);
-	else
-		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_BACKUP);
+	if (CHECK_FLAG(info->flags, BGP_PATH_ANNOUNCED))
+		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_ANNOUNCED);
 
 	/* If the route's source is EVPN, flag as such. */
 	is_evpn = is_route_parent_evpn(info);
@@ -1497,8 +1495,8 @@ void bgp_zebra_announce_table(struct bgp *bgp, afi_t afi, safi_t safi)
 			     && (pi->sub_type == BGP_ROUTE_NORMAL
 				 || pi->sub_type == BGP_ROUTE_IMPORTED)))
 				for (int i = 0; i < bgp->best_paths; i++) {
-					zlog_debug("bgp_zebra_announce_table i = %d: Flag Primary, %x",  i, 
-							CHECK_FLAG(pi->flags, BGP_PATH_PRIMARY));
+					zlog_debug("bgp_zebra_announce_table i = %d: Flag Announced, %x",  i, 
+							CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED));
 					bgp_zebra_announce(rn, &rn->p, pi, bgp, afi, safi);
 					if (pi->prev)
 						pi = pi->prev;

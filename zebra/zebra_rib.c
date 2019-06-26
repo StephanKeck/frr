@@ -2798,7 +2798,7 @@ int rib_add_multipath(afi_t afi, safi_t safi, struct prefix *p,
 			continue;
 
 		//if (same->ng.nexthop->ifindex != re->ng.nexthop->ifindex)
-		if ((CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_PRIMARY) || CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_BACKUP))
+		if (CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_ANNOUNCED)
 				&& !CHECK_FLAG(same->flags, ZEBRA_FLAG_BACKUP_USED))
 			continue;
 
@@ -2851,7 +2851,7 @@ int rib_add_multipath(afi_t afi, safi_t safi, struct prefix *p,
 			(void *)rn, (void *)same, same->flags, (void *)same);
 		rib_delnode(rn, same);
 		ret = -1;
-	} else if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_PRIMARY) || CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_BACKUP)) {
+	} else if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED)) {
 		SET_FLAG(re->flags, ZEBRA_FLAG_BACKUP_USED);
 	}
 

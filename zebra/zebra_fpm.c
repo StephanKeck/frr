@@ -954,8 +954,7 @@ static void zfpm_build_updates(void)
 		 * Remove the dest from the queue, and reset the flag.
 		 * If it is the last element from the list (!re->prev) do "else"
 		 */
-		if ((CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_PRIMARY) || 
-				CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_BACKUP)) && re->prev)
+		if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED) && re->prev)
 		{	
 			SET_FLAG(re->flags, ZEBRA_FLAG_FPM_SENT);
 		}
