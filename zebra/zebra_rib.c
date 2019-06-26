@@ -1675,6 +1675,8 @@ static void rib_process(struct route_node *rn)
 					   ROUTE_ENTRY_CHANGED);
 			new_fib = best;
 		} else {
+//#if ENABLE_BGP_BLINK
+//#endif
 			best = rib_choose_best(new_selected, re);
 			if (new_selected && best != new_selected)
 				UNSET_FLAG(new_selected->status,
