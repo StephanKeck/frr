@@ -87,7 +87,6 @@ struct route_entry {
 #define ROUTE_ENTRY_NEXTHOPS_CHANGED 0x2
 #define ROUTE_ENTRY_CHANGED          0x4
 #define ROUTE_ENTRY_LABELS_CHANGED   0x8
-
 	/* Nexthop information. */
 	uint8_t nexthop_num;
 	uint8_t nexthop_active_num;

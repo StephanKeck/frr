@@ -478,9 +478,10 @@ static inline void zfpm_write_off(void)
 static int zfpm_conn_up_thread_cb(struct thread *thread)
 {
 	struct route_node *rnode;
-	struct route_entry *pi;
+	//struct route_entry *pi;
 	zfpm_rnodes_iter_t *iter;
 	rib_dest_t *dest;
+	char buf[SRCDEST2STR_BUFFER];
 
 	zfpm_g->t_conn_up = NULL;
 
@@ -494,18 +495,13 @@ static int zfpm_conn_up_thread_cb(struct thread *thread)
 	}
 
 	while ((rnode = zfpm_rnodes_iter_next(iter))) {
+		if (IS_ZEBRA_DEBUG_RIB)
+			srcdest_rnode2str(rnode, buf, sizeof(buf));
 		dest = rib_dest_from_rnode(rnode);
 
 		if (dest) {
 			zfpm_g->stats.t_conn_up_dests_processed++;
-			zlog_debug("Blinklist: rn");
-			for (pi = dest->selected_fib; dest->selected_fib != NULL; 
-					dest->selected_fib = dest->selected_fib->next)
-			{
-				zlog_debug("Blinklist: selected_fib: %p", pi);	
-				zfpm_trigger_update(rnode, NULL);
-			}
-			dest->selected_fib = pi;
+			zfpm_trigger_update(rnode, NULL);
 		}
 
 		/*
@@ -599,6 +595,7 @@ static int zfpm_conn_down_thread_cb(struct thread *thread)
 	struct route_node *rnode;
 	zfpm_rnodes_iter_t *iter;
 	rib_dest_t *dest;
+	struct route_entry *pi;
 
 	assert(zfpm_g->state == ZFPM_STATE_IDLE);
 
@@ -617,7 +614,12 @@ static int zfpm_conn_down_thread_cb(struct thread *thread)
 
 			UNSET_FLAG(dest->flags, RIB_DEST_UPDATE_FPM);
 			UNSET_FLAG(dest->flags, RIB_DEST_SENT_TO_FPM);
-
+			pi = dest->selected_fib;
+			while(CHECK_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT))
+			{
+				UNSET_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT);
+				pi = pi->prev;
+			}			
 			zfpm_g->stats.t_conn_down_dests_processed++;
 
 			/*
@@ -864,8 +866,11 @@ static inline int zfpm_encode_route(rib_dest_t *dest, struct route_entry *re,
  * Returns the re that is to be sent to the FPM for a given dest.
  */
 struct route_entry *zfpm_route_for_update(rib_dest_t *dest)
-{
-	return dest->selected_fib;
+{	
+	struct route_entry *pi = dest->selected_fib;
+	while(CHECK_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT) && pi->prev)
+			pi = pi->prev;
+	return pi;
 }
 
 /*
@@ -887,11 +892,9 @@ static void zfpm_build_updates(void)
 	fpm_msg_type_e msg_type;
 
 	s = zfpm_g->obuf;
-
 	assert(stream_empty(s));
 
 	do {
-
 		/*
 		 * Make sure there is enough space to write another message.
 		 */
@@ -903,8 +906,10 @@ static void zfpm_build_updates(void)
 
 		dest = TAILQ_FIRST(&zfpm_g->dest_q);
 		if (!dest)
+		{
 			break;
-
+		}
+		
 		assert(CHECK_FLAG(dest->flags, RIB_DEST_UPDATE_FPM));
 
 		hdr = (fpm_msg_hdr_t *)buf;
@@ -912,8 +917,8 @@ static void zfpm_build_updates(void)
 
 		data = fpm_msg_data(hdr);
 
-		re = zfpm_route_for_update(dest);
-		is_add = re ? 1 : 0;
+		re = zfpm_route_for_update(dest); //selected_fib
+		is_add = re ? 1 : 0; //TODO re could be 0 for add!
 
 		write_msg = 1;
 
@@ -947,9 +952,17 @@ static void zfpm_build_updates(void)
 
 		/*
 		 * Remove the dest from the queue, and reset the flag.
+		 * If it is the last element from the list (!re->prev) do "else"
 		 */
-		UNSET_FLAG(dest->flags, RIB_DEST_UPDATE_FPM);
-		TAILQ_REMOVE(&zfpm_g->dest_q, dest, fpm_q_entries);
+		if ((CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_PRIMARY) || 
+				CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_BACKUP)) && re->prev)
+		{	
+			SET_FLAG(re->flags, ZEBRA_FLAG_FPM_SENT);
+		}
+		else {
+			UNSET_FLAG(dest->flags, RIB_DEST_UPDATE_FPM);
+			TAILQ_REMOVE(&zfpm_g->dest_q, dest, fpm_q_entries);
+		}
 
 		if (is_add) {
 			SET_FLAG(dest->flags, RIB_DEST_SENT_TO_FPM);
@@ -976,7 +989,6 @@ static int zfpm_write_cb(struct thread *thread)
 
 	zfpm_g->stats.write_cb_calls++;
 	zfpm_g->t_write = NULL;
-
 	/*
 	 * Check if async connect is now done.
 	 */

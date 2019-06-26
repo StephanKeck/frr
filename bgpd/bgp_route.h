@@ -208,19 +208,22 @@ struct bgp_path_info {
 #define BGP_PATH_DAMPED (1 << 1)
 #define BGP_PATH_HISTORY (1 << 2)
 #define BGP_PATH_SELECTED (1 << 3)
+
 #define BGP_PATH_VALID (1 << 4)
 #define BGP_PATH_ATTR_CHANGED (1 << 5)
 #define BGP_PATH_DMED_CHECK (1 << 6)
 #define BGP_PATH_DMED_SELECTED (1 << 7)
+
 #define BGP_PATH_STALE (1 << 8)
 #define BGP_PATH_REMOVED (1 << 9)
 #define BGP_PATH_COUNTED (1 << 10)
 #define BGP_PATH_MULTIPATH (1 << 11)
+	
 #define BGP_PATH_MULTIPATH_CHG (1 << 12)
 #define BGP_PATH_RIB_ATTR_CHG (1 << 13)
 #define BGP_PATH_ANNC_NH_SELF (1 << 14)
 /*if not set it is a backup path*/
-#define BGP_PATH_PRIMARY (1 << 15)
+#define BGP_PATH_PRIMARY (1 << 15) //x, 8000
 
 
 	/* BGP route type.  This can be static, RIP, OSPF, BGP etc.  */
