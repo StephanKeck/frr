@@ -1250,7 +1250,9 @@ static void rib_process_add_fib(struct zebra_vrf *zvrf, struct route_node *rn,
 				struct route_entry *new)
 {
 	rib_dest_t *dest = rib_dest_from_rnode(rn);
-
+	//TODO: 
+	//do we look here for the n best routes?!
+	//Does it only update the first?
 	hook_call(rib_update, rn, "new route selected");
 
 	/* Update real nexthop. This may actually determine if nexthop is active
@@ -1275,7 +1277,7 @@ static void rib_process_add_fib(struct zebra_vrf *zvrf, struct route_node *rn,
 		rib_install_kernel(rn, new, NULL);
 	else
 		dest->selected_fib = new;
-	
+
 	//for (struct route_entry *pi = dest->selected_fib;
 	//		pi != NULL; pi = pi->next)
 	//	zlog_debug("Blink: selected_fib: %p", pi);
@@ -1381,7 +1383,6 @@ static void rib_process_update_fib(struct zebra_vrf *zvrf,
 				 * LSP. */
 				if (zebra_rib_labeled_unicast(new))
 					zebra_mpls_lsp_install(zvrf, rn, new);
-				//Here -> FPM
 				rib_install_kernel(rn, new, old);
 			} else {
 				/*
@@ -1532,10 +1533,16 @@ static struct route_entry *rib_choose_best(struct route_entry *current,
 	if (current->distance < alternate->distance)
 		return current;
 
+	/*Choose new_selected from bgpd */ 
+	if (CHECK_FLAG(alternate->flags, ZEBRA_FLAG_BGP_SELECTED))
+		return alternate;
+	if (CHECK_FLAG(current->flags, ZEBRA_FLAG_BGP_SELECTED))
+		return current;
+	
 	/* metric tie-breaks equal distance */
 	if (alternate->metric <= current->metric)
 		return alternate;
-
+	
 	return current;
 }
 
@@ -1825,20 +1832,19 @@ static void rib_process(struct route_node *rn)
 	 * Check if the dest can be deleted now.
 	 */
 	rib_gc_dest(rn);
-
-	RNODE_FOREACH_RE_SAFE (rn, re, next)
-		if (IS_ZEBRA_DEBUG_RIB_DETAILED)
-			zlog_debug(
-				"%u:%s: Blinklist: After deletion: re %p (type %d) status %x flags %x "
-				"dist %d metric %d",
-				vrf_id, buf, re, re->type, re->status,
-				re->flags, re->distance, re->metric);
-	struct route_entry *next_re;
-	for ((re) = (dest) ? (dest)->selected_fib : NULL;                            \
-	     (re) && ((next_re) = (re)->next, 1); (re) = (next_re))
-	{
-		zlog_debug("%s: Zebra Blinklist, selected_fib: %p, flags %x", buf, re, re->flags);
-	}
+	//RNODE_FOREACH_RE_SAFE (rn, re, next)
+	//	if (IS_ZEBRA_DEBUG_RIB_DETAILED)
+	//		zlog_debug(
+	//			"%u:%s: Blinklist: After deletion: re %p (type %d) status %x flags %x "
+	//			"dist %d metric %d",
+	//			vrf_id, buf, re, re->type, re->status,
+	//			re->flags, re->distance, re->metric);
+	//struct route_entry *next_re;
+	//for ((re) = (dest) ? (dest)->selected_fib : NULL;                            \
+	//     (re) && ((next_re) = (re)->next, 1); (re) = (next_re))
+	//{
+	//	zlog_debug("%s: Zebra Blinklist, selected_fib: %p, flags %x", buf, re, re->flags);
+	//}
 }
 
 /*
@@ -1949,6 +1955,7 @@ static void rib_process_after(struct zebra_dplane_ctx *ctx)
 			zlog_debug("Failed to process dplane results: no route for %u:%s",
 				   dplane_ctx_get_vrf(ctx), dest_str);
 		}
+
 		goto done;
 	}
 
@@ -2792,14 +2799,18 @@ int rib_add_multipath(afi_t afi, safi_t safi, struct prefix *p,
 	 * for the install don't do a route replace.
 	 */
 	//for ((same) = (dest)->routes; (same); (same) = (same)->next)
+	/*If all statements are true (continue -> break), same element gets removed
+	  if all are different same will be NULL at the end */
 	RNODE_FOREACH_RE (rn, same) {
 		//If all don't have continue we should have same == NULL from the end of the list!
 		if (CHECK_FLAG(same->status, ROUTE_ENTRY_REMOVED))
 			continue;
 
 		//if (same->ng.nexthop->ifindex != re->ng.nexthop->ifindex)
-		if (CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_ANNOUNCED)
-				&& !CHECK_FLAG(same->flags, ZEBRA_FLAG_BACKUP_USED))
+		//TODO!!!
+		// Ignore if it is one of n BGP routes and it was not used yet.....
+				//&& !CHECK_FLAG(same->flags, ZEBRA_FLAG_BACKUP_USED))
+		if (CHECK_FLAG(same->flags, ZEBRA_FLAG_BGP_ANNOUNCED))
 			continue;
 
 		if (same->type != re->type)
@@ -2851,9 +2862,10 @@ int rib_add_multipath(afi_t afi, safi_t safi, struct prefix *p,
 			(void *)rn, (void *)same, same->flags, (void *)same);
 		rib_delnode(rn, same);
 		ret = -1;
-	} else if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED)) {
-		SET_FLAG(re->flags, ZEBRA_FLAG_BACKUP_USED);
-	}
+	} 
+	//else if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED)) {
+	//	SET_FLAG(re->flags, ZEBRA_FLAG_BACKUP_USED);
+	//}
 
 	route_unlock_node(rn);
 	return ret;
@@ -2913,7 +2925,13 @@ void rib_delete(afi_t afi, safi_t safi, vrf_id_t vrf_id, int type,
 	RNODE_FOREACH_RE (rn, re) {
 		if (CHECK_FLAG(re->status, ROUTE_ENTRY_REMOVED))
 			continue;
-
+		//TODO
+		zlog_debug("ZEBRA_FLAG_BGP_ANNOUNCED %d", 
+			CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED));
+		zlog_debug("ZEBRA_FLAG_FPM_SENT %d", 
+			CHECK_FLAG(re->flags, ZEBRA_FLAG_FPM_SENT));
+		//if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED))
+		//	continue;
 		if (re->type != type)
 			continue;
 		if (re->instance != instance)

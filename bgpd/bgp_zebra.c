@@ -1256,6 +1256,9 @@ void bgp_zebra_announce(struct bgp_node *rn, struct prefix *p,
 	if (CHECK_FLAG(info->flags, BGP_PATH_ANNOUNCED))
 		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_ANNOUNCED);
 
+	if (CHECK_FLAG(info->flags, BGP_PATH_SELECTED))
+		SET_FLAG(api.flags, ZEBRA_FLAG_BGP_SELECTED);
+	
 	/* If the route's source is EVPN, flag as such. */
 	is_evpn = is_route_parent_evpn(info);
 	if (is_evpn)

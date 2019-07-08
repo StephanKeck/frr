@@ -391,7 +391,7 @@ extern struct bgp_path_info *bgp_path_info_unlock(struct bgp_path_info *path);
 extern void bgp_path_info_add(struct bgp_node *rn, struct bgp_path_info *pi);
 extern void bgp_path_info_extra_free(struct bgp_path_info_extra **extra);
 extern void bgp_path_info_reap(struct bgp_node *rn, struct bgp_path_info *pi);
-extern void bgp_path_info_to_top(struct bgp_node *rn, struct bgp_path_info *pi);
+extern void bgp_path_info_to_head(struct bgp_node *rn, struct bgp_path_info *pi);
 extern void bgp_path_info_delete(struct bgp_node *rn, struct bgp_path_info *pi);
 extern struct bgp_path_info_extra *
 bgp_path_info_extra_get(struct bgp_path_info *path);
@@ -518,6 +518,8 @@ extern void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 			       safi_t safi);
 extern void bgp_zebra_clear_route_change_flags(struct bgp_node *rn);
 extern int bgp_zebra_has_route_changed(struct bgp_node *rn,
+				       struct bgp_path_info *selected);
+extern int bgp_zebra_new_backup_path(struct bgp *bgp, struct bgp_node *rn,
 				       struct bgp_path_info *selected);
 
 extern void route_vty_out_detail_header(struct vty *vty, struct bgp *bgp,
