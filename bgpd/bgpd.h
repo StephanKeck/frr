@@ -1389,6 +1389,8 @@ struct bgp_nlri {
 #define BGP_DEFAULT_IBGP_ROUTEADV                0
 #define BGP_DEFAULT_CONNECT_RETRY                 DFLT_BGP_TIMERS_CONNECT
 
+#define BGP_BEST_PATHS_DEFAULT                   1
+
 /* BGP default local preference.  */
 #define BGP_DEFAULT_LOCAL_PREF                 100
 
@@ -1592,7 +1594,8 @@ extern int bgp_default_subgroup_pkt_queue_max_unset(struct bgp *bgp);
 extern int bgp_listen_limit_set(struct bgp *, int);
 extern int bgp_listen_limit_unset(struct bgp *);
 
-extern int bgp_set_best_paths(struct bgp *, int);
+extern int bgp_best_paths_set(struct bgp *, int);
+extern int bgp_best_paths_unset(struct bgp *);
 
 extern int bgp_update_delay_active(struct bgp *);
 extern int bgp_update_delay_configured(struct bgp *);

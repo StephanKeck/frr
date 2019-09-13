@@ -674,12 +674,22 @@ int bgp_listen_limit_unset(struct bgp *bgp)
 	return 0;
 }
 
-int bgp_set_best_paths(struct bgp *bgp, int best_paths)
+int bgp_best_paths_set(struct bgp *bgp, int best_paths)
 {
 	if (!bgp)
 		return -1;
 
 	bgp->best_paths = best_paths;
+
+	return 0;
+}
+
+int bgp_best_paths_unset(struct bgp *bgp)
+{
+	if (!bgp)
+		return -1;
+
+	bgp->best_paths = BGP_BEST_PATHS_DEFAULT;
 
 	return 0;
 }

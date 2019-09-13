@@ -2588,11 +2588,13 @@ DEFUN (no_bgp_listen_limit,
 	return CMD_SUCCESS;
 }
 
-DEFUN (bgp_n_best_paths, 
-		bgp_n_best_paths_cmd,
-		"bgp best paths (1-5000)",
-		"BGP specific commands\n"
-		"Number of paths that get announced to zebra\n")
+DEFUN (bgp_best_paths, 
+       bgp_best_paths_cmd,
+       "bgp best paths (1-10)",
+       "BGP specific commands\n"
+       "Configure BGP defaults\n"
+       "Number of paths that get announced to zebra\n"
+       "Configure bgp best paths value\n")
 {
 	VTY_DECLVAR_CONTEXT(bgp, bgp);
 	int idx_number = 3;
@@ -2600,8 +2602,22 @@ DEFUN (bgp_n_best_paths,
 
 	best_paths = strtoul(argv[idx_number]->arg, NULL, 10);
 
-	bgp_set_best_paths(bgp, best_paths);
+	bgp_best_paths_set(bgp, best_paths);
 	
+	return CMD_SUCCESS;
+}
+
+DEFUN (no_bgp_best_paths,
+       no_bgp_best_paths_cmd,
+       "no bgp best paths [(1-10)]",
+       "BGP specific commands\n"
+       "Configure BGP defaults\n"
+       "number of paths that get announced to zebra\n"
+       "Configure bgp best paths value to default\n"
+       "Configure bgp best paths value\n")
+{
+	VTY_DECLVAR_CONTEXT(bgp, bgp);
+	bgp_best_paths_unset(bgp);
 	return CMD_SUCCESS;
 }
 
@@ -12973,7 +12989,8 @@ void bgp_vty_init(void)
 	install_element(BGP_NODE, &bgp_listen_limit_cmd);
 	install_element(BGP_NODE, &no_bgp_listen_limit_cmd);
 
-	install_element(BGP_NODE, &bgp_n_best_paths_cmd);
+	install_element(BGP_NODE, &bgp_best_paths_cmd);
+	install_element(BGP_NODE, &no_bgp_best_paths_cmd);
 
 	/* "bgp listen range" commands. */
 	install_element(BGP_NODE, &bgp_listen_range_cmd);
