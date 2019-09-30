@@ -2930,6 +2930,7 @@ static struct bgp *bgp_create(as_t *as, const char *name,
 	bgp->stalepath_time = BGP_DEFAULT_STALEPATH_TIME;
 	bgp->dynamic_neighbors_limit = BGP_DYNAMIC_NEIGHBORS_LIMIT_DEFAULT;
 	bgp->dynamic_neighbors_count = 0;
+	bgp->best_paths = BGP_BEST_PATHS_DEFAULT;
 #if DFLT_BGP_IMPORT_CHECK
 	bgp_flag_set(bgp, BGP_FLAG_IMPORT_CHECK);
 #endif
