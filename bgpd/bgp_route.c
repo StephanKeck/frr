@@ -2028,7 +2028,7 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 				 * selected route must stay for a while longer though
 				 */
 				if (CHECK_FLAG(pi->flags, BGP_PATH_REMOVED)
-				    && (pi != old_select))
+				    && ((pi != old_select) && !CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED)))
 					bgp_path_info_reap(rn, pi);
 
 				if (debug)
@@ -2628,6 +2628,16 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 	/* Reap old select bgp_path_info, if it has been removed */
 	if (old_select && CHECK_FLAG(old_select->flags, BGP_PATH_REMOVED))
 		bgp_path_info_reap(rn, old_select);
+		/*Reap previously selected route */
+		pi = new_select;
+		for (int i = 0; pi; i++) {
+			if(CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED) && CHECK_FLAG(pi->flags, BGP_PATH_REMOVED))
+				bgp_path_info_reap(rn, p, pi, bgp, afi, safi);
+			if (pi->next)
+				pi = pi->next;
+			else
+				break;
+	}
 
 	UNSET_FLAG(rn->flags, BGP_NODE_PROCESS_SCHEDULED);
 
