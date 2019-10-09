@@ -225,6 +225,8 @@ struct bgp_path_info {
 /*if not set it is a backup path*/
 #define BGP_PATH_ANNOUNCED (1 << 15) //x, 8000
 
+	/*Preference of BGP route begins with 1 */
+	int preference;
 
 	/* BGP route type.  This can be static, RIP, OSPF, BGP etc.  */
 	uint8_t type;

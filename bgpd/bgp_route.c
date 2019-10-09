@@ -2003,9 +2003,7 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 		}
 		//For every round the best from last round should be skipped
 		best = NULL;
-		//TODO: Can pi be NULL?!
 		pi = bgp_node_get_bgp_path_info(rn);
-		//TODO: If list contains less than best_paths entries skip the interations
 		/* Jumps best entries according to best_paths. */
 		for (int j = 0; j < i && pi; j++) {
 			if (debug)
@@ -2022,12 +2020,6 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 				bgp_path_info_path_with_addpath_rx_str(pi, path_buf);
 				zlog_debug("%s, evaluating %s", __func__, path_buf);
 			}
-			//TODO: This should not be needed, since we jump by "n-1"
-			//if (best == pi)
-			//{
-			//	zlog_debug("%s, already best!", __func__);
-			//	break;
-			//}
 			if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
 				old_select = pi;
 			/* Here come some reasons to ignore the route from best path selection */
@@ -2089,7 +2081,17 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_node *rn,
 			new_select = best;
 		}
 		if (best)
+		{
 			bgp_path_info_to_head(rn, best);
+			//TODO: CHECK FLAG needed
+			if (CHECK_FLAG(best->flags, BGP_PATH_ANNOUNCED) && best->preference != i+1)
+			{
+					if (debug)
+						zlog_debug("%s: i==%d: preference changed: %s",__func__, i, best_buf);
+					UNSET_FLAG(best->flags, BGP_PATH_ANNOUNCED);
+			}
+			best->preference = i+1;
+		}
 	}
 
 	/* Now that we know which path is the bestpath see if any of the other
@@ -2282,12 +2284,26 @@ int bgp_zebra_has_route_changed(struct bgp_node *rn,
 }
 
 int bgp_zebra_new_backup_path(struct bgp *bgp, struct bgp_node *rn,
-				struct bgp_path_info *pi)
+				struct bgp_path_info *new_select)
 {
+	struct bgp_path_info *pi;
+	for (pi = new_select; (pi != NULL); pi = pi->next) {
+		if (CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED))
+		{
+			if(bgp_debug_bestpath(&rn->p))
+				zlog_debug("Deleted route");
+			return 1;
+		}	
+	}
+	pi = new_select;
 	for (int i = 0; i < bgp->best_paths && pi; i++) 
 	{
 		if (!CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED))
+		{
+			if(bgp_debug_bestpath(&rn->p))
+				zlog_debug("New route in preference");
 			return 1;
+		}
 		pi = pi->prev;
 	}
 	return 0;
@@ -2433,11 +2449,12 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 	    && !CHECK_FLAG(rn->flags, BGP_NODE_USER_CLEAR)
 	    && !CHECK_FLAG(old_select->flags, BGP_PATH_ATTR_CHANGED)
 	    && !bgp_addpath_is_addpath_used(&bgp->tx_addpath, afi, safi)) {
-		
-		zlog_debug("bgp_zebra_has_route_changed(rn, old_select): %d", 
-			bgp_zebra_has_route_changed(rn, old_select));
-		zlog_debug("bgp_zebra_new_backup_path(bgp, rn, old_select): %d", 
-			bgp_zebra_new_backup_path(bgp, rn, old_select));
+		if (debug) {
+			zlog_debug("bgp_zebra_has_route_changed(rn, old_select): %d", 
+				bgp_zebra_has_route_changed(rn, old_select));
+			zlog_debug("bgp_zebra_new_backup_path(bgp, rn, old_select): %d", 
+				bgp_zebra_new_backup_path(bgp, rn, old_select));
+		}
 		if (bgp_zebra_has_route_changed(rn, old_select) || bgp_zebra_new_backup_path(bgp, rn, old_select)) {
 #if ENABLE_BGP_VNC
 			vnc_import_bgp_add_route(bgp, p, old_select);
@@ -2450,24 +2467,7 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 				    && (new_select->sub_type == BGP_ROUTE_NORMAL
 					|| new_select->sub_type
 						   == BGP_ROUTE_IMPORTED))
-				{	
-					/* Withdraw all the routes we announced before 
-					   (pseudo-replace semantics)
-					   When backup path withdrawn */
-					for (pi = bgp_node_get_bgp_path_info(rn); pi; pi = pi->next)
-					{
-						if (CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED))
-						{
-							if (debug)
-					 		{
-								prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
-								zlog_debug("bgp_zebra_withdraw, AS_N: %u, p: %p", 
-									aspath_get_first_as(pi->attr->aspath), pfx_buf); 
-							}
-							bgp_zebra_withdraw(p, pi, bgp, safi);
-							UNSET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
-						}
-					} 
+				{	 
 					pi = new_select;
 					for (int i = 0; i < bgp->best_paths; i++) {
 						prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
@@ -2562,6 +2562,10 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 		group_announce_route(bgp, afi, SAFI_LABELED_UNICAST, rn,
 				     new_select);
 
+	
+	zlog_debug("Withdraw: /* FIB update. */: safi: %d, inst_type: %d, option_check: %d", 
+			bgp_fibupd_safi(safi), (bgp->inst_type != BGP_INSTANCE_TYPE_VIEW), !bgp_option_check(BGP_OPT_NO_FIB)); 
+
 	/* FIB update. */
 	if (bgp_fibupd_safi(safi) && (bgp->inst_type != BGP_INSTANCE_TYPE_VIEW)
 	    && !bgp_option_check(BGP_OPT_NO_FIB)) {
@@ -2577,75 +2581,16 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 			if (old_select &&
 			    is_route_parent_evpn(old_select))
 				bgp_zebra_withdraw(p, old_select, bgp, safi);
-			/* Withdraw all the routes we announced before 
-			   (pseudo-replace semantics)
-			   When backup path withdrawn */
-			for (pi = bgp_node_get_bgp_path_info(rn); pi; pi = pi->next)
-			{
-				if (CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED))
-				{
-					if (debug)
-			 		{
-						prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
-						zlog_debug("bgp_zebra_withdraw, AS_N: %u, p: %p", 
-							aspath_get_first_as(pi->attr->aspath), pfx_buf); 
-					}
-					bgp_zebra_withdraw(p, pi, bgp, safi);
-					UNSET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
-				}
-			} 
 
-			pi = new_select;
-			for (int i = 0; i < bgp->best_paths; i++) {
-
-				if (debug)
-				{
-					prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
-					zlog_debug("bgp_zebra_announce: AS_N: %u, p: %s, Pref: %d", 
-						aspath_get_first_as(pi->attr->aspath), pfx_buf, i+1); 
-				}
-				SET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
-				bgp_zebra_announce(rn, p, pi, bgp, afi, safi);
-				if (pi->prev)
-					pi = pi->prev;
-				else
-					break;
-			}
+			bgp_zebra_announce(rn, p, new_select, bgp, afi, safi);
 		} else {
 			/* Withdraw the route from the kernel. */
 			if (old_select && old_select->type == ZEBRA_ROUTE_BGP
 			    && (old_select->sub_type == BGP_ROUTE_NORMAL
 				|| old_select->sub_type == BGP_ROUTE_AGGREGATE
 				|| old_select->sub_type == BGP_ROUTE_IMPORTED))
-			//{	
-			//	//TODO
-			//	pi = old_select;
-			//	for (int i = 0; i < bgp->best_paths; i++) {
-				bgp_zebra_withdraw(p, old_select, bgp, safi); //pi
-			//		if (pi->prev)
-			//			pi = pi->prev;
-			//		else
-			//			break;
-			//	}
-			//}
-		}
 
-		//TODO: Is this used?!
-		//Loop over all unchosen entries (next!), withdraw if they have been announced before
-		if (new_select && new_select->next){
-			for (pi = new_select->next; pi; pi = pi->next)
-			{
-			 	if (CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED)){
-			 		UNSET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
-					if (debug)
-			 		{
-						prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
-						zlog_debug("bgp_zebra_withdraw, AS_N: %u, p: %p", 
-							aspath_get_first_as(pi->attr->aspath), pfx_buf); 
-					}
-					bgp_zebra_withdraw(p, pi, bgp, safi);
-			 	}
-			}
+				bgp_zebra_withdraw(p, old_select, bgp, safi);
 		}
 	}
 
@@ -2679,27 +2624,6 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_node *rn,
 
 	/* Clear any route change flags. */
 	bgp_zebra_clear_route_change_flags(rn);
-
-
-	//TODO: Need to announce all or (for now ->) just backup?
-	/*
-	//for (pi = new_select if it exists???(rn);
-			     (pi != NULL) && (nextpi = pi->prev, 1); pi = nextpi)
-	{
-		prefix2str(&rn->p, pfx_buf, sizeof(pfx_buf));
-		zlog_debug("evaluation of %u, p: %s", 
-			aspath_get_first_as(pi->attr->aspath), pfx_buf); 
-		
-		if (!CHECK_FLAG(pi->flags, BGP_PATH_ANNOUNCED))
-		{
-			if (debug)
-				zlog_debug("bgp_zebra_announce: AS_N: %u, p: %s, New Backup", 
-					aspath_get_first_as(pi->attr->aspath), pfx_buf); 
-			bgp_zebra_announce(rn, p, pi, bgp, afi, safi);
-			SET_FLAG(pi->flags, BGP_PATH_ANNOUNCED);
-		}
-	}
-	*/
 
 	/* Reap old select bgp_path_info, if it has been removed */
 	if (old_select && CHECK_FLAG(old_select->flags, BGP_PATH_REMOVED))

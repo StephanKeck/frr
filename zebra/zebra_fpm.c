@@ -615,11 +615,13 @@ static int zfpm_conn_down_thread_cb(struct thread *thread)
 			UNSET_FLAG(dest->flags, RIB_DEST_UPDATE_FPM);
 			UNSET_FLAG(dest->flags, RIB_DEST_SENT_TO_FPM);
 			pi = dest->selected_fib;
-			while(CHECK_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT))
-			{
-				UNSET_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT);
-				pi = pi->prev;
-			}			
+			if (pi){
+				while(CHECK_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT) && pi->prev)
+				{
+					UNSET_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT);
+					pi = pi->prev;
+				}			
+			}
 			zfpm_g->stats.t_conn_down_dests_processed++;
 
 			/*
@@ -868,8 +870,11 @@ static inline int zfpm_encode_route(rib_dest_t *dest, struct route_entry *re,
 struct route_entry *zfpm_route_for_update(rib_dest_t *dest)
 {	
 	struct route_entry *pi = dest->selected_fib;
-	while(CHECK_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT) && pi->prev)
-			pi = pi->prev;
+	if (pi)
+	{
+		while(CHECK_FLAG(pi->flags, ZEBRA_FLAG_FPM_SENT) && pi->prev)
+				pi = pi->prev;
+	}
 	return pi;
 }
 
@@ -906,9 +911,7 @@ static void zfpm_build_updates(void)
 
 		dest = TAILQ_FIRST(&zfpm_g->dest_q);
 		if (!dest)
-		{
 			break;
-		}
 		
 		assert(CHECK_FLAG(dest->flags, RIB_DEST_UPDATE_FPM));
 
@@ -954,7 +957,7 @@ static void zfpm_build_updates(void)
 		 * Remove the dest from the queue, and reset the flag.
 		 * If it is the last element from the list (!re->prev) do "else"
 		 */
-		if (CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED) && re->prev)
+		if (is_add && CHECK_FLAG(re->flags, ZEBRA_FLAG_BGP_ANNOUNCED) && re->prev)
 		{	
 			SET_FLAG(re->flags, ZEBRA_FLAG_FPM_SENT);
 		}

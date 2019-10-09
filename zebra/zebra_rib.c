@@ -1832,19 +1832,6 @@ static void rib_process(struct route_node *rn)
 	 * Check if the dest can be deleted now.
 	 */
 	rib_gc_dest(rn);
-	//RNODE_FOREACH_RE_SAFE (rn, re, next)
-	//	if (IS_ZEBRA_DEBUG_RIB_DETAILED)
-	//		zlog_debug(
-	//			"%u:%s: Blinklist: After deletion: re %p (type %d) status %x flags %x "
-	//			"dist %d metric %d",
-	//			vrf_id, buf, re, re->type, re->status,
-	//			re->flags, re->distance, re->metric);
-	//struct route_entry *next_re;
-	//for ((re) = (dest) ? (dest)->selected_fib : NULL;                            \
-	//     (re) && ((next_re) = (re)->next, 1); (re) = (next_re))
-	//{
-	//	zlog_debug("%s: Zebra Blinklist, selected_fib: %p, flags %x", buf, re, re->flags);
-	//}
 }
 
 /*
